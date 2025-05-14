@@ -27,7 +27,6 @@ async function sendToADO(issueTitle: string, firstComment: string) {
   // Use azure-devops-node-api to send the payload to ADO
   const orgUrl = "https://dev.azure.com/ursa-minus";
   const token: string = process.env.ADO_TOKEN || '';
-  console.log("ADO token is 🔑", token);
 
   const authHandler = azdev.getPersonalAccessTokenHandler(token);
   const connection = new azdev.WebApi(orgUrl, authHandler);
