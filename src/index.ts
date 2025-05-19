@@ -1,7 +1,19 @@
 import { Probot } from "probot";
 import * as azdev from "azure-devops-node-api";
-import { send } from "process";
 
+// Define interfaces for the project field value change payload
+interface FieldValueChange {
+  field_node_id: string;
+  field_type: string;
+  field_name?: string;  // Make optional
+  project_number?: number;  // Make optional
+  from?: any;  // Make optional
+  to?: any;    // Make optional
+}
+
+interface ProjectChanges {
+  field_value: FieldValueChange;
+}
 
 export default (app: Probot) => {
   app.on("issues.opened", async (context) => {
@@ -16,6 +28,38 @@ export default (app: Probot) => {
     console.log("First comment is 🐸", firstComment);
     
     sendToADO(issueTitle, firstComment);
+  });
+
+  app.on("projects_v2_item.edited", async (context) => {
+    let payload = context.payload;
+    console.log("Payload is 🐸", payload);
+    
+    // Extract from and to fields if they exist
+    if (payload.changes && payload.changes.field_value) {
+      const changes: FieldValueChange = payload.changes.field_value;
+      
+      const fromValue = changes.from || null;
+      const toValue = changes.to || null;
+      
+      console.log("Field changed from:", fromValue);
+      console.log("Field changed to:", toValue);
+      
+      // Get additional metadata
+      const fieldName = changes.field_name || '';
+      const fieldType = changes.field_type || '';
+      const projectNumber = changes.project_number || '';
+      
+      console.log(`Field "${fieldName}" (${fieldType}) in project ${projectNumber} was updated`);
+      
+      // You can now use these variables for further processing
+      if (fieldName === 'Status' && fieldType === 'single_select') {
+        // Handle status field changes specifically
+        console.log(`Status changed from "${fromValue}" to "${toValue}"`);
+        
+        // Example: Call a function to sync this change
+        // syncStatusChange(fromValue, toValue, payload.projects_v2_item);
+      }
+    }
   });
 
 }
