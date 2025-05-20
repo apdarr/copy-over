@@ -11,9 +11,25 @@ interface FieldValueChange {
   to?: any;    // Make optional
 }
 
-interface ProjectChanges {
-  field_value: FieldValueChange;
-}
+// constant of Status column names
+const STATUS_COLUMN_NAMES = [
+  "Assigned by Sam",
+  "Repeat Tasks",
+  "Not Yet Started",
+  "In Progress",
+  "Done"
+];
+
+const orgUrl = "https://dev.azure.com/ursa-minus";
+const token: string = process.env.ADO_TOKEN || '';
+
+const authHandler = azdev.getPersonalAccessTokenHandler(token);
+const connection = new azdev.WebApi(orgUrl, authHandler);
+
+// Create a new work item
+const workItemTrackingApi = await connection.getWorkItemTrackingApi();
+const project = "ursa"; // Replace with your project name
+const workItemType = "Issue"; // Replace with your work item type
 
 export default (app: Probot) => {
   app.on("issues.opened", async (context) => {
@@ -41,23 +57,24 @@ export default (app: Probot) => {
       const fromValue = changes.from || null;
       const toValue = changes.to || null;
       
-      console.log("Field changed from:", fromValue);
-      console.log("Field changed to:", toValue);
+      // console.log("Field changed from:", fromValue);
+      // console.log("Field changed to:", toValue);
+      
+      // console.log("Field name is:::::::::", changes.field_name);
       
       // Get additional metadata
       const fieldName = changes.field_name || '';
       const fieldType = changes.field_type || '';
-      const projectNumber = changes.project_number || '';
+      // const projectNumber = changes.project_number || '';
       
-      console.log(`Field "${fieldName}" (${fieldType}) in project ${projectNumber} was updated`);
+      // console.log(`Field "${fieldName}" (${fieldType}) in project ${projectNumber} was updated`);
       
-      // You can now use these variables for further processing
-      if (fieldName === 'Status' && fieldType === 'single_select') {
-        // Handle status field changes specifically
-        console.log(`Status changed from "${fromValue}" to "${toValue}"`);
-        
-        // Example: Call a function to sync this change
-        // syncStatusChange(fromValue, toValue, payload.projects_v2_item);
+      // Check that that fromValue and toValue are not null and both exist in the STATUS_COLUMN_NAMES array
+      if (fromValue && toValue && STATUS_COLUMN_NAMES.includes(fromValue.name) && STATUS_COLUMN_NAMES.includes(toValue.name)) {
+        console.log(`Field "${fieldName}" (${fieldType}) changed from "${fromValue.name}" to "${toValue.name}"`);
+        syncStatusChange(fromValue.name, toValue.name, payload.projects_v2_item);
+      } else {
+        console.log("Field change is not related to status columns or values are null");
       }
     }
   });
@@ -115,4 +132,29 @@ async function sendToADO(issueTitle: string, firstComment: string) {
     console.error("Error creating work item:", error);
     throw error;
   }
+}
+
+async function syncStatusChange(fromValue: string, toValue: string, item: any) {
+  // Implement your logic to sync the status change
+  console.log(`🧪 Syncing status change from "${fromValue}" to "${toValue}" for item ${item} 🧪`);
+
+  // Fetch the name of columns within the board
+  const workApi = await connection.getWorkApi();
+  
+  // Create a TeamContext object with project and team information
+  const teamContext = {
+    project: "ursa",
+    team: "ursa Team"
+  };
+
+  // "board" is the name of your board from the screenshot
+
+  const boards = await workApi.getBoards(teamContext);
+  console.log("Boards: 🧪", boards);
+
+  const boardColumns = await workApi.getBoardColumns(teamContext, "Issues");
+  console.log("Board columns: ⚗️", boardColumns);
+
+  // Example: Update the work item in ADO
+  // await updateWorkItemInADO(item, toValue);
 }
