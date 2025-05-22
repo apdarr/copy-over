@@ -12,12 +12,13 @@
     "probot-app"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --skipLibCheck",
     "start": "probot run ./lib/index.js",
     "test": "vitest"
   },
   "dependencies": {
     "azure-devops-node-api": "^14.1.0",
+    "pg-protocol": "^1.10.0",
     "probot": "^13.0.1"
   },
   "devDependencies": {
