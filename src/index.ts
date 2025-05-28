@@ -195,6 +195,7 @@ async function syncStatusChange(fromValue: string, toValue: string, item: any) {
         );
         console.log(`Work item moved to column ${matchingColumnName} using field ${boardColumnField}`);
       } else {
+
         console.log("Could not find Kanban column field to update work item position");
       }
 
@@ -204,6 +205,52 @@ async function syncStatusChange(fromValue: string, toValue: string, item: any) {
       throw error;
     }
   } else {
-    console.log(`No matching column found for "${toValue}" in ADO board`);
+    console.log(`No matching column found for "${toValue}" in ADO board.`);
+    console.log(`⚠️  Azure DevOps API does not support creating board columns programmatically.`);
+    console.log(`📝 Please manually create a column named "${toValue}" in the Azure DevOps board to enable sync for this status.`);
+    
+    // Still create the work item, but it will go to the default column
+    try {
+      const workItemTitle = item.title || "GitHub Issue";
+      const workItemDescription = item.content || "No description provided";
+
+      // Create a new work item
+      const workItemTrackingApi = await connection.getWorkItemTrackingApi();
+      const project = "ursa";
+      const workItemType = "Issue";
+
+      // Define the work item fields
+      const patchDocument = [
+        {
+          op: "add",
+          path: "/fields/System.Title",
+          value: workItemTitle
+        },
+        {
+          op: "add",
+          path: "/fields/System.Description",
+          value: workItemDescription
+        },
+        {
+          op: "add",
+          path: "/fields/System.Tags",
+          value: `GitHub Import; Missing Column: ${toValue}`
+        }
+      ];
+
+      // Create the work item
+      const createdWorkItem = await workItemTrackingApi.createWorkItem(
+        null, // No template
+        patchDocument,
+        project,
+        workItemType
+      );
+
+      console.log(`Work item created: ID ${createdWorkItem.id} (placed in default column due to missing "${toValue}" column)`);
+      return createdWorkItem;
+    } catch (error) {
+      console.error("Error creating work item:", error);
+      throw error;
+    }
   }
 }
