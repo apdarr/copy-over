@@ -10,6 +10,7 @@ interface GitHubIssueMetadata {
     owner: { login: string };
     name: string;
   };
+  labels?: { nodes: { name: string }[] };
 }
 
 // constant of Status column names
@@ -84,6 +85,23 @@ async function fetchIssueMetadata(context: any, nodeId: string): Promise<GitHubI
                 login
               }
               name
+            }
+            labels(first: 50) {
+              nodes { name }
+            }
+          }
+          ... on PullRequest {
+            title
+            body
+            number
+            repository {
+              owner {
+                login
+              }
+              name
+            }
+            labels(first: 50) {
+              nodes { name }
             }
           }
         }
@@ -166,6 +184,9 @@ async function handleProjectItemSync(context: any, item: any, eventTargetColumn?
   const { title: issueTitle, body: issueBody = "", number: issueNumber } = issueMetadata;
   const { login: repoOwner } = issueMetadata.repository.owner;
   const { name: repoName } = issueMetadata.repository;
+  const labelNames: string[] = (issueMetadata.labels?.nodes || [])
+    .map(n => n?.name)
+    .filter((n): n is string => typeof n === 'string' && n.length > 0);
   const githubIdentifier = `${repoOwner}/${repoName}#${issueNumber}`;
   console.log(`Processing GitHub Item: ${githubIdentifier} - "${issueTitle}"`);
 
@@ -188,13 +209,21 @@ async function handleProjectItemSync(context: any, item: any, eventTargetColumn?
   if (existingWorkItem) {
     console.log(`Found existing ADO Work Item ID: ${existingWorkItem.id} for ${githubIdentifier}`);
     if (finalTargetColumn) {
-      // Check if the ADO column field for the existing work item already matches finalTargetColumn
-      // This requires knowing the specific field name, e.g., workItem.fields["WEF_..._Kanban.Column"]
-      // For simplicity, we'll attempt the update, ADO API might be idempotent or we can add a check later.
-      console.log(`Attempting to update column for existing work item ${existingWorkItem.id} to "${finalTargetColumn}"`);
-      await updateWorkItemColumn(existingWorkItem.id, finalTargetColumn); // updateWorkItemColumn internally checks if column exists
+      console.log(`Attempting to sync work item ${existingWorkItem.id} to column "${finalTargetColumn}"`);
+      await updateWorkItemColumn(existingWorkItem.id, finalTargetColumn);
+
+      // After handling column sync, ensure GitHub labels exist as ADO tags on the work item
+      if (labelNames.length > 0) {
+        console.log(`Syncing ${labelNames.length} labels to work item ${existingWorkItem.id}: [${labelNames.join(", ")}]`);
+        await ensureLabelsOnWorkItem(existingWorkItem.id, labelNames);
+      }
     } else {
       console.log(`No specific target column determined for existing work item ${existingWorkItem.id}. No column update performed.`);
+      // Still sync labels even if no column change
+      if (labelNames.length > 0) {
+        console.log(`Syncing ${labelNames.length} labels to work item ${existingWorkItem.id}: [${labelNames.join(", ")}]`);
+        await ensureLabelsOnWorkItem(existingWorkItem.id, labelNames);
+      }
     }
     return existingWorkItem;
   } else {
@@ -205,7 +234,8 @@ async function handleProjectItemSync(context: any, item: any, eventTargetColumn?
       repoOwner,
       repoName,
       issueNumber,
-      finalTargetColumn // createWorkItem internally handles if column exists and tags if missing
+      finalTargetColumn, // createWorkItem internally handles if column exists and tags if missing
+      labelNames
     );
     return newWorkItem;
   }
@@ -220,7 +250,8 @@ async function createWorkItem(
   repoOwner: string,
   repoName: string,
   issueNumber: number,
-  targetColumn?: string
+  targetColumn?: string,
+  labels?: string[]
 ): Promise<any> {
   const workItemTrackingApi = await connection.getWorkItemTrackingApi();
   const project = "ursa";
@@ -229,14 +260,24 @@ async function createWorkItem(
   // Create GitHub identifier tag
   const githubIdentifier = `${repoOwner}/${repoName}#${issueNumber}`;
   
-  let tags = `GitHub Import; ${githubIdentifier}`;
+  let tagsSet = new Set<string>();
+  tagsSet.add("GitHub Import");
+  tagsSet.add(githubIdentifier);
+  for (const lbl of (labels || [])) {
+    if (typeof lbl === 'string' && lbl.trim().length > 0) {
+      tagsSet.add(lbl.trim());
+    }
+  }
   if (targetColumn) {
     // Check if the target column exists in ADO board
     const boardHasColumn = await checkColumnExists(targetColumn);
     if (!boardHasColumn) {
-      tags += `; Missing Column: ${targetColumn}`;
+      tagsSet.add(`Missing destination column: ${targetColumn}`);
+      console.log(`Target column "${targetColumn}" does not exist in ADO board. Added to tags.`);
     }
   }
+
+  const tags = Array.from(tagsSet).join("; ");
 
   // Define the work item fields
   const patchDocument = [
@@ -269,7 +310,8 @@ async function createWorkItem(
     console.log(`Work item created: ID ${createdWorkItem.id} for ${githubIdentifier}`);
 
     // If targetColumn is specified and exists, move the work item there
-    if (targetColumn && await checkColumnExists(targetColumn)) {
+    if (targetColumn) {
+      console.log(`Attempting to move newly created work item ${createdWorkItem.id} to column "${targetColumn}"`);
       await updateWorkItemColumn(createdWorkItem.id!, targetColumn);
     }
 
@@ -291,12 +333,29 @@ async function checkColumnExists(columnName: string): Promise<boolean> {
       team: "ursa Team"
     };
 
+    console.log(`Checking if column "${columnName}" exists in ADO board...`);
     const boardColumns = await workApi.getBoardColumns(teamContext, "Issues");
-    const matchingColumn = boardColumns.find((col: any) => col.name === columnName);
     
-    return !!matchingColumn;
+    if (!boardColumns || boardColumns.length === 0) {
+      console.log("No board columns found or board columns is empty");
+      return false;
+    }
+
+    // Log all available columns for debugging
+    const availableColumns = boardColumns.map((col: any) => col.name).filter(Boolean);
+    console.log(`Available ADO board columns: [${availableColumns.join(", ")}]`);
+    
+    const matchingColumn = boardColumns.find((col: any) => col.name === columnName);
+    const exists = !!matchingColumn;
+    
+    console.log(`Column "${columnName}" exists in ADO: ${exists}`);
+    return exists;
   } catch (error) {
     console.error("Error checking if column exists:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : "Unknown"
+    });
     return false;
   }
 }
@@ -350,6 +409,108 @@ export default (app: Probot) => {
   });
 };
 
+// Ensure specified labels exist as tags in the project and are applied to the work item
+async function ensureLabelsOnWorkItem(workItemId: number | undefined, labels: string[]): Promise<void> {
+  if (!workItemId) return;
+  if (!labels || labels.length === 0) return;
+
+  try {
+    const workItemTrackingApi = await connection.getWorkItemTrackingApi();
+    const project = "ursa";
+
+    const workItem = await workItemTrackingApi.getWorkItem(workItemId, ["System.Tags"], undefined, undefined, project);
+    const currentTagsStr = (workItem.fields && (workItem.fields as any)["System.Tags"]) as string | undefined;
+    const currentTags = new Set<string>((currentTagsStr || "")
+      .split(";")
+      .map(t => t.trim())
+      .filter(t => t.length > 0));
+
+    const existingProjectTags = await workItemTrackingApi.getTags(project);
+    const projectTagSet = new Set<string>((existingProjectTags || []).map((t: any) => (t && t.name) ? String(t.name) : "").filter(Boolean));
+
+    const toApply: string[] = [];
+    for (const lbl of labels) {
+      const name = typeof lbl === 'string' ? lbl.trim() : '';
+      if (!name) continue;
+      if (!currentTags.has(name)) {
+        // If tag doesn't exist in project, adding it to the work item will create it implicitly
+        if (!projectTagSet.has(name)) {
+          console.log(`Tag '${name}' does not exist in project; it will be created by applying to work item ${workItemId}.`);
+        }
+        toApply.push(name);
+      }
+    }
+
+    if (toApply.length === 0) return;
+
+    // Merge and update the work item tags
+    const updated = new Set<string>([...currentTags, ...toApply]);
+    const newTagString = Array.from(updated).join("; ");
+
+    await workItemTrackingApi.updateWorkItem(
+      null,
+      [
+        {
+          op: "add",
+          path: "/fields/System.Tags",
+          value: newTagString
+        }
+      ],
+      workItemId,
+      project
+    );
+    console.log(`Applied ${toApply.length} tag(s) to work item ${workItemId}: ${toApply.join(", ")}`);
+  } catch (error) {
+    console.error("Error ensuring labels on work item:", error);
+    throw error;
+  }
+}
+
+// Helper function to add a missing column tag to a work item
+async function addMissingColumnTag(workItemId: number, missingColumnName: string): Promise<void> {
+  try {
+    const workItemTrackingApi = await connection.getWorkItemTrackingApi();
+    const project = "ursa";
+
+    // Get current work item to read existing tags
+    const workItem = await workItemTrackingApi.getWorkItem(workItemId, ["System.Tags"], undefined, undefined, project);
+    const currentTagsStr = (workItem.fields && (workItem.fields as any)["System.Tags"]) as string | undefined;
+    const currentTags = new Set<string>((currentTagsStr || "")
+      .split(";")
+      .map(t => t.trim())
+      .filter(t => t.length > 0));
+
+    // Add the missing column tag
+    const missingColumnTag = `Missing destination column: ${missingColumnName}`;
+    
+    // Remove any existing "Missing destination column" tags to avoid duplicates
+    const filteredTags = Array.from(currentTags).filter(tag => 
+      !tag.startsWith("Missing destination column:")
+    );
+    
+    filteredTags.push(missingColumnTag);
+    const newTagString = filteredTags.join("; ");
+
+    await workItemTrackingApi.updateWorkItem(
+      null,
+      [
+        {
+          op: "add",
+          path: "/fields/System.Tags",
+          value: newTagString
+        }
+      ],
+      workItemId,
+      project
+    );
+    
+    console.log(`Added missing column tag to work item ${workItemId}: "${missingColumnTag}"`);
+  } catch (error) {
+    console.error(`Error adding missing column tag to work item ${workItemId}:`, error);
+    throw error;
+  }
+}
+
 // Helper function to update work item column position
 async function updateWorkItemColumn(workItemId: number | undefined, columnName: string | undefined): Promise<void> {
   if (!workItemId) {
@@ -366,6 +527,15 @@ async function updateWorkItemColumn(workItemId: number | undefined, columnName: 
     const workItemTrackingApi = await connection.getWorkItemTrackingApi();
     const project = "ursa";
 
+    // First, check if the column exists in ADO
+    const columnExists = await checkColumnExists(columnName);
+    
+    if (!columnExists) {
+      console.log(`Column "${columnName}" does not exist in ADO board. Adding missing column tag.`);
+      await addMissingColumnTag(workItemId, columnName);
+      return;
+    }
+
     // Get the full work item to find the Kanban column field name
     const workItem = await workItemTrackingApi.getWorkItem(workItemId);
 
@@ -375,6 +545,15 @@ async function updateWorkItemColumn(workItemId: number | undefined, columnName: 
     );
 
     if (boardColumnField) {
+      console.log(`Found board column field: ${boardColumnField}`);
+      
+      // Check if work item is already in the target column
+      const currentColumn = workItem.fields?.[boardColumnField];
+      if (currentColumn === columnName) {
+        console.log(`Work item ${workItemId} is already in column "${columnName}"`);
+        return;
+      }
+
       // Update the work item to move it to the correct column
       await workItemTrackingApi.updateWorkItem(
         null,
@@ -388,12 +567,19 @@ async function updateWorkItemColumn(workItemId: number | undefined, columnName: 
         workItemId,
         project
       );
-      console.log(`Work item ${workItemId} moved to column ${columnName} using field ${boardColumnField}`);
+      console.log(`Work item ${workItemId} moved from "${currentColumn}" to column "${columnName}" using field ${boardColumnField}`);
     } else {
       console.log("Could not find Kanban column field to update work item position");
+      // Still add the missing column info as a tag for tracking
+      await addMissingColumnTag(workItemId, columnName);
     }
   } catch (error) {
-    console.error("Error updating work item column:", error);
-    throw error;
+    console.error(`Error updating work item ${workItemId} column to "${columnName}":`, error);
+    // Add the missing column tag as fallback
+    try {
+      await addMissingColumnTag(workItemId, columnName);
+    } catch (tagError) {
+      console.error("Failed to add missing column tag:", tagError);
+    }
   }
 }
