@@ -269,11 +269,11 @@ async function createWorkItem(
     }
   }
   if (targetColumn) {
-    // Check if the target column exists in ADO board
-    const boardHasColumn = await checkColumnExists(targetColumn);
-    if (!boardHasColumn) {
+    // Ensure the target column exists in ADO board, creating it if necessary
+    const columnReady = await ensureBoardColumn(targetColumn);
+    if (!columnReady) {
       tagsSet.add(`Missing destination column: ${targetColumn}`);
-      console.log(`Target column "${targetColumn}" does not exist in ADO board. Added to tags.`);
+      console.log(`Could not create column "${targetColumn}" in ADO board. Added to tags.`);
     }
   }
 
@@ -358,6 +358,100 @@ async function checkColumnExists(columnName: string): Promise<boolean> {
     });
     return false;
   }
+}
+
+/**
+ * Create a new column in the ADO board
+ */
+async function createBoardColumn(columnName: string): Promise<boolean> {
+  try {
+    const workApi = await connection.getWorkApi();
+    const teamContext = {
+      project: "ursa",
+      team: "ursa Team"
+    };
+
+    console.log(`Creating new column "${columnName}" in ADO board...`);
+    
+    // Get current columns
+    const existingColumns = await workApi.getBoardColumns(teamContext, "Issues");
+    
+    if (!existingColumns || existingColumns.length === 0) {
+      console.error("Could not retrieve existing board columns");
+      return false;
+    }
+
+    // Log existing columns and their state mappings for debugging
+    console.log("Existing columns with state mappings:");
+    existingColumns.forEach(col => {
+      console.log(`  - ${col.name}: ${JSON.stringify(col.stateMappings)}`);
+    });
+
+    // Find the last column (should be the "outgoing" column like "Done")
+    // We need to insert the new column BEFORE the outgoing column
+    const outgoingColumnIndex = existingColumns.findIndex(
+      col => col.columnType === 2 // BoardColumnType.Outgoing = 2
+    );
+
+    // Find an existing InProgress column to copy state mappings from
+    // This ensures we have the correct work item types and states
+    const existingInProgressColumn = existingColumns.find(
+      col => col.columnType === 1 && col.stateMappings
+    );
+
+    // Use state mappings from an existing InProgress column, or create a default mapping
+    const stateMappings = existingInProgressColumn?.stateMappings || {
+      "Issue": "To Do" // Default mapping for Issue work item type
+    };
+
+    // Create new column with default settings (no ID for new columns)
+    const newColumn = {
+      name: columnName,
+      columnType: 1, // InProgress type
+      itemLimit: 0,  // No WIP limit
+      isSplit: false,
+      stateMappings: stateMappings,
+      description: ""
+    };
+
+    // Build the updated columns array, inserting new column before the outgoing column
+    const updatedColumns = [...existingColumns];
+    if (outgoingColumnIndex !== -1) {
+      // Insert before the outgoing column
+      updatedColumns.splice(outgoingColumnIndex, 0, newColumn);
+    } else {
+      // If no outgoing column found, append at the end (shouldn't happen normally)
+      updatedColumns.push(newColumn);
+    }
+
+    // Update the board with the new column configuration
+    await workApi.updateBoardColumns(updatedColumns, teamContext, "Issues");
+    
+    console.log(`Successfully created column "${columnName}" in ADO board`);
+    return true;
+  } catch (error) {
+    console.error(`Error creating column "${columnName}":`, error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : "Unknown"
+    });
+    return false;
+  }
+}
+
+/**
+ * Ensure a column exists in the ADO board, creating it if necessary
+ */
+async function ensureBoardColumn(columnName: string): Promise<boolean> {
+  const exists = await checkColumnExists(columnName);
+  
+  if (exists) {
+    console.log(`Column "${columnName}" already exists in ADO board`);
+    return true;
+  }
+  
+  console.log(`Column "${columnName}" does not exist. Attempting to create it...`);
+  return await createBoardColumn(columnName);
 }
 
 export default (app: Probot) => {
@@ -527,11 +621,11 @@ async function updateWorkItemColumn(workItemId: number | undefined, columnName: 
     const workItemTrackingApi = await connection.getWorkItemTrackingApi();
     const project = "ursa";
 
-    // First, check if the column exists in ADO
-    const columnExists = await checkColumnExists(columnName);
+    // Ensure the column exists in ADO, creating it if necessary
+    const columnReady = await ensureBoardColumn(columnName);
     
-    if (!columnExists) {
-      console.log(`Column "${columnName}" does not exist in ADO board. Adding missing column tag.`);
+    if (!columnReady) {
+      console.log(`Could not create column "${columnName}" in ADO board. Adding missing column tag.`);
       await addMissingColumnTag(workItemId, columnName);
       return;
     }
