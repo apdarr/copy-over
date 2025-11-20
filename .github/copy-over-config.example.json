@@ -1,0 +1,18 @@
+{
+  "syncMappings": [
+    {
+      "githubProject": {
+        "number": 3,
+        "id": 10191666,
+        "nodeId": "PVT_kwDOBXP6k84Am4My"
+      },
+      "azureDevOps": {
+        "organization": "ursa-minus",
+        "project": "ursa",
+        "team": "ursa Team",
+        "board": "Issues"
+      },
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+name: Configure GitHub ↔ Azure DevOps Sync
+description: Set up synchronization between GitHub Projects and Azure DevOps boards
+title: "[CONFIG] Setup sync for [PROJECT NAME]"
+labels: ["sync-config"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Configure Project Sync
+        Fill out the information below to set up synchronization between a GitHub Project and Azure DevOps board.
+        
+        **Note:** This configuration will be stored in `.github/copy-over-config.json` in this repository.
+        
+  - type: input
+    id: github_project_number
+    attributes:
+      label: GitHub Project Number
+      description: The project number from your project URL (e.g., the "3" in github.com/orgs/your-org/projects/3)
+      placeholder: "3"
+    validations:
+      required: true
+      
+  - type: input
+    id: ado_organization
+    attributes:
+      label: Azure DevOps Organization
+      description: The organization name (from dev.azure.com/YOUR-ORG)
+      placeholder: "ursa-minus"
+    validations:
+      required: true
+      
+  - type: input
+    id: ado_project
+    attributes:
+      label: Azure DevOps Project
+      description: The project name within the organization
+      placeholder: "ursa"
+    validations:
+      required: true
+      
+  - type: input
+    id: ado_team
+    attributes:
+      label: Azure DevOps Team
+      description: The team name (usually [Project] Team)
+      placeholder: "ursa Team"
+    validations:
+      required: true
+      
+  - type: input
+    id: ado_board
+    attributes:
+      label: Azure DevOps Board Name
+      description: The board to sync to (usually "Issues" or "Stories")
+      placeholder: "Issues"
+    validations:
+      required: true
+      
+  - type: dropdown
+    id: action
+    attributes:
+      label: Action
+      description: What would you like to do?
+      options:
+        - Enable sync
+        - Disable sync
+        - Update configuration
+    validations:
+      required: true
