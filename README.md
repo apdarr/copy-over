@@ -70,6 +70,6 @@ docker run -e APP_ID=<app-id> -e PRIVATE_KEY=<pem-value> copy-over
 
 ## Remaining work
 
-- [ ] Current `undefined` column mapping issue when moving an issue to a new column that doesn't exist in ADO. Creating new columns in this case on ADO should be possible?
+- [x] Current `undefined` column mapping issue when moving an issue to a new column that doesn't exist in ADO. Creating new columns in this case on ADO should be possible?
 - [ ] Important, all comment history needs to be copied over. Need to figure out how to attribute authorship for comments.
 - [ ] It should be possible to re-load the entire state of the Project to ADO board on-demand (e.g. via a special comment on an issue, or a separate "sync now" issue template). This would help with initial syncs or if something got out of sync.
