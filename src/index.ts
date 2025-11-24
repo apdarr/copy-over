@@ -34,15 +34,6 @@ interface GitHubIssueMetadata {
   labels?: { nodes: { name: string }[] };
 }
 
-// constant of Status column names
-const STATUS_COLUMN_NAMES = [
-  "Assigned by Sam",
-  "Repeat Tasks",
-  "Not Yet Started",
-  "In Progress",
-  "Done"
-];
-
 const token: string = process.env.ADO_TOKEN || '';
 const CONFIG_REPO_OWNER: string = process.env.CONFIG_REPO_OWNER || '';
 const CONFIG_REPO_NAME: string = process.env.CONFIG_REPO_NAME || '';
@@ -214,9 +205,9 @@ function extractCurrentColumn(item: any): string | undefined {
   // Check if we have field_values in the payload
   if (item.field_values && Array.isArray(item.field_values)) {
     for (const fieldValue of item.field_values) {
-      // Look for single_select field values that match our status columns
-      if (fieldValue.field && fieldValue.field.name && 
-          fieldValue.option_name && STATUS_COLUMN_NAMES.includes(fieldValue.option_name)) {
+      // Look for single_select field values (Status field)
+      if (fieldValue.field && fieldValue.field.name === 'Status' && 
+          fieldValue.option_name) {
         console.log(`Found current column in payload: ${fieldValue.option_name}`);
         return fieldValue.option_name;
       }
@@ -226,8 +217,8 @@ function extractCurrentColumn(item: any): string | undefined {
   // Also check if field values are nested differently
   if (item.fieldValues && item.fieldValues.nodes) {
     for (const fieldValue of item.fieldValues.nodes) {
-      if (fieldValue.field && fieldValue.field.name && 
-          fieldValue.name && STATUS_COLUMN_NAMES.includes(fieldValue.name)) {
+      if (fieldValue.field && fieldValue.field.name === 'Status' && 
+          fieldValue.name) {
         console.log(`Found current column in fieldValues.nodes: ${fieldValue.name}`);
         return fieldValue.name;
       }
@@ -773,13 +764,13 @@ export default (app: Probot) => {
       const fieldValChange = payload.changes.field_value as any; // Use 'as any' for flexibility, or a more specific type
 
       // We are interested if 'field_name' is 'Status' (or whatever your project calls it)
-      // and if 'to' (the new value) has a 'name' property that's a recognized column.
+      // and if 'to' (the new value) has a 'name' property.
       // The exact structure of field_value can vary based on the field type.
       // For a single select field (like a status column), 'to' would be an object with a 'name'.
       if (fieldValChange.field_type === 'single_select' && 
+          fieldValChange.field_name === 'Status' &&
           fieldValChange.to && typeof fieldValChange.to === 'object' && 
-          typeof fieldValChange.to.name === 'string' && 
-          STATUS_COLUMN_NAMES.includes(fieldValChange.to.name)) {
+          typeof fieldValChange.to.name === 'string') {
         
         determinedTargetColumn = fieldValChange.to.name;
         console.log(`Detected column change in edit event. Field: "${fieldValChange.field_name}", New column: "${determinedTargetColumn}"`);
