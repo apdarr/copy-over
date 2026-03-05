@@ -10,7 +10,7 @@ Install the app on your repository from the GitHub Marketplace or your organizat
 
 ### 2. Configure Sync
 
-See [Configuration Guide](docs/CONFIGURATION.md) for detailed setup instructions.
+See the configuration section below for detailed setup instructions.
 
 Quick steps:
 1. Create a new issue using the "Configure GitHub ↔ Azure DevOps Sync" template
@@ -23,12 +23,6 @@ Once configured, any changes to items in your GitHub Project will automatically 
 - New items create new ADO work items
 - Column moves update work item states
 - Labels sync as tags
-
-## Documentation
-
-- [Configuration Guide](docs/CONFIGURATION.md) - Complete setup and configuration instructions
-- [Column Sync Details](docs/COLUMN_SYNC.md) - How column synchronization works
-- [Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md) - Technical implementation details
 
 ## Development Setup
 
