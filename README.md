@@ -52,6 +52,16 @@ docker run -e APP_ID=<app-id> -e PRIVATE_KEY=<pem-value> copy-over
 - As you move a GitHub Project item between columns, the corresponding ADO work item state (e.g. column state) is updated.
 - Labels are synced from Projects to ADO boards.
 - If an item is synced to ADO, but that column names doesn't exist, it should add a label like: "Missing Column" to the work item in ADO.
+- Comment history is synced from GitHub issues to ADO work item discussions. Since the app authenticates as itself, comments include attribution in the format:
+  ```
+  Original comment text
+
+  — @username via copy-over
+  ```
+  - New comments are synced in real-time via the `issue_comment.created` webhook.
+  - Existing comments are backfilled when a work item is created or updated.
+  - Duplicate comments are prevented using hidden HTML markers.
+  - Bot comments are skipped to avoid sync loops.
 - There's a one-to-one mapping between a Project and an ADO board. Setting this up is done via IssueOps. 
   - Ideally in the same repo, where the GitHub app code lives, users can create new issues following the GitHub issue template in `.github/ISSUE_TEMPLATE/configure-sync.yml`.
   - There they can fill out the required information to set up the sync (GitHub Project ID, ADO organization, project, team, board names).
@@ -60,10 +70,9 @@ docker run -e APP_ID=<app-id> -e PRIVATE_KEY=<pem-value> copy-over
   - This allows users to self-service their own configuration by simply creating an issue, and mapping is transparent in a central repo.
   - No secrets are stored in the config file - only mapping information.
   - Because this config file is version-controlled in the repo, users can see an audit trail of changes via Git history.
-- 
 
 ## Remaining work
 
 - [x] Current `undefined` column mapping issue when moving an issue to a new column that doesn't exist in ADO. Creating new columns in this case on ADO should be possible?
-- [ ] Important, all comment history needs to be copied over. Need to figure out how to attribute authorship for comments.
+- [x] Important, all comment history needs to be copied over. Need to figure out how to attribute authorship for comments.
 - [ ] It should be possible to re-load the entire state of the Project to ADO board on-demand (e.g. via a special comment on an issue, or a separate "sync now" issue template). This would help with initial syncs or if something got out of sync.

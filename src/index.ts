@@ -1,5 +1,27 @@
 import { Probot } from "probot";
 import * as azdev from "azure-devops-node-api";
+import { fetchIssueComments, syncCommentsToWorkItem } from "./comments.js";
+
+const itemProcessingLocks = new Map<string, Promise<any>>();
+
+async function withItemLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  while (itemProcessingLocks.has(key)) {
+    try {
+      await itemProcessingLocks.get(key);
+    } catch {
+      // Ignore errors from previous processing
+    }
+  }
+
+  const promise = fn();
+  itemProcessingLocks.set(key, promise);
+
+  try {
+    return await promise;
+  } finally {
+    itemProcessingLocks.delete(key);
+  }
+}
 
 // Interface for a single sync mapping
 interface SyncMapping {
@@ -336,7 +358,6 @@ async function findExistingWorkItem(connection: azdev.WebApi, mapping: SyncMappi
  */
 async function handleProjectItemSync(context: any, item: any, mapping: SyncMapping, connection: azdev.WebApi, eventTargetColumn?: string): Promise<any> {
   console.log("=== handleProjectItemSync START ===");
-  // console.log("Item data (full):", JSON.stringify(item, null, 2)); // Verbose: log full item if needed
   console.log("Item content_node_id:", item.content_node_id);
   console.log("Initial eventTargetColumn (from edit event, if any):", eventTargetColumn);
 
@@ -345,72 +366,84 @@ async function handleProjectItemSync(context: any, item: any, mapping: SyncMappi
     return null;
   }
 
-  const issueMetadata = await fetchIssueMetadata(context, item.content_node_id);
-  if (!issueMetadata) {
-    console.log("Could not fetch issue metadata from GitHub. Skipping sync.");
-    return null;
-  }
+  return withItemLock(item.content_node_id, async () => {
+    console.log(`Lock acquired for ${item.content_node_id}`);
 
-  const { title: issueTitle, body: issueBody = "", number: issueNumber } = issueMetadata;
-  const { login: repoOwner } = issueMetadata.repository.owner;
-  const { name: repoName } = issueMetadata.repository;
-  const labelNames: string[] = (issueMetadata.labels?.nodes || [])
-    .map(n => n?.name)
-    .filter((n): n is string => typeof n === 'string' && n.length > 0);
-  const githubIdentifier = `${repoOwner}/${repoName}#${issueNumber}`;
-  console.log(`Processing GitHub Item: ${githubIdentifier} - "${issueTitle}"`);
-
-  let finalTargetColumn: string | undefined = eventTargetColumn;
-
-  if (!finalTargetColumn) {
-    console.log("eventTargetColumn not provided (e.g., create event or non-column edit), attempting to extract current column from item payload.");
-    const extractedColumn = extractCurrentColumn(item);
-    if (extractedColumn) {
-      console.log(`Extracted current column from item payload: ${extractedColumn}`);
-      finalTargetColumn = extractedColumn;
-    } else {
-      console.log("Could not extract current column from item payload (item might be new or column info not present).");
+    const issueMetadata = await fetchIssueMetadata(context, item.content_node_id);
+    if (!issueMetadata) {
+      console.log("Could not fetch issue metadata from GitHub. Skipping sync.");
+      return null;
     }
-  }
-  console.log(`Final target ADO column for sync: ${finalTargetColumn}`);
 
-  const existingWorkItem = await findExistingWorkItem(connection, mapping, repoOwner, repoName, issueNumber);
+    const { title: issueTitle, body: issueBody = "", number: issueNumber } = issueMetadata;
+    const { login: repoOwner } = issueMetadata.repository.owner;
+    const { name: repoName } = issueMetadata.repository;
+    const labelNames: string[] = (issueMetadata.labels?.nodes || [])
+      .map(n => n?.name)
+      .filter((n): n is string => typeof n === 'string' && n.length > 0);
+    const githubIdentifier = `${repoOwner}/${repoName}#${issueNumber}`;
+    console.log(`Processing GitHub Item: ${githubIdentifier} - "${issueTitle}"`);
 
-  if (existingWorkItem) {
-    console.log(`Found existing ADO Work Item ID: ${existingWorkItem.id} for ${githubIdentifier}`);
-    if (finalTargetColumn) {
-      console.log(`Attempting to sync work item ${existingWorkItem.id} to column "${finalTargetColumn}"`);
-      await updateWorkItemColumn(connection, mapping, existingWorkItem.id, finalTargetColumn);
+    let finalTargetColumn: string | undefined = eventTargetColumn;
 
-      // After handling column sync, ensure GitHub labels exist as ADO tags on the work item
-      if (labelNames.length > 0) {
-        console.log(`Syncing ${labelNames.length} labels to work item ${existingWorkItem.id}: [${labelNames.join(", ")}]`);
-        await ensureLabelsOnWorkItem(connection, mapping, existingWorkItem.id, labelNames);
-      }
-    } else {
-      console.log(`No specific target column determined for existing work item ${existingWorkItem.id}. No column update performed.`);
-      // Still sync labels even if no column change
-      if (labelNames.length > 0) {
-        console.log(`Syncing ${labelNames.length} labels to work item ${existingWorkItem.id}: [${labelNames.join(", ")}]`);
-        await ensureLabelsOnWorkItem(connection, mapping, existingWorkItem.id, labelNames);
+    if (!finalTargetColumn) {
+      console.log("eventTargetColumn not provided (e.g., create event or non-column edit), attempting to extract current column from item payload.");
+      const extractedColumn = extractCurrentColumn(item);
+      if (extractedColumn) {
+        console.log(`Extracted current column from item payload: ${extractedColumn}`);
+        finalTargetColumn = extractedColumn;
+      } else {
+        console.log("Could not extract current column from item payload (item might be new or column info not present).");
       }
     }
-    return existingWorkItem;
-  } else {
-    console.log(`No existing ADO Work Item found for ${githubIdentifier}. Creating new one.`);
-    const newWorkItem = await createWorkItem(
-      connection,
-      mapping,
-      issueTitle,
-      issueBody,
-      repoOwner,
-      repoName,
-      issueNumber,
-      finalTargetColumn, // createWorkItem internally handles if column exists and tags if missing
-      labelNames
-    );
-    return newWorkItem;
-  }
+    console.log(`Final target ADO column for sync: ${finalTargetColumn}`);
+
+    const existingWorkItem = await findExistingWorkItem(connection, mapping, repoOwner, repoName, issueNumber);
+
+    let workItem: any;
+
+    if (existingWorkItem) {
+      console.log(`Found existing ADO Work Item ID: ${existingWorkItem.id} for ${githubIdentifier}`);
+      if (finalTargetColumn) {
+        console.log(`Attempting to sync work item ${existingWorkItem.id} to column "${finalTargetColumn}"`);
+        await updateWorkItemColumn(connection, mapping, existingWorkItem.id, finalTargetColumn);
+
+        if (labelNames.length > 0) {
+          console.log(`Syncing ${labelNames.length} labels to work item ${existingWorkItem.id}: [${labelNames.join(", ")}]`);
+          await ensureLabelsOnWorkItem(connection, mapping, existingWorkItem.id, labelNames);
+        }
+      } else {
+        console.log(`No specific target column determined for existing work item ${existingWorkItem.id}. No column update performed.`);
+        if (labelNames.length > 0) {
+          console.log(`Syncing ${labelNames.length} labels to work item ${existingWorkItem.id}: [${labelNames.join(", ")}]`);
+          await ensureLabelsOnWorkItem(connection, mapping, existingWorkItem.id, labelNames);
+        }
+      }
+      workItem = existingWorkItem;
+    } else {
+      console.log(`No existing ADO Work Item found for ${githubIdentifier}. Creating new one.`);
+      workItem = await createWorkItem(
+        connection,
+        mapping,
+        issueTitle,
+        issueBody,
+        repoOwner,
+        repoName,
+        issueNumber,
+        finalTargetColumn,
+        labelNames
+      );
+    }
+
+    if (workItem?.id) {
+      const comments = await fetchIssueComments(context, repoOwner, repoName, issueNumber);
+      if (comments.length > 0) {
+        await syncCommentsToWorkItem(connection, mapping, workItem.id, comments);
+      }
+    }
+
+    return workItem;
+  });
 }
 
 /**
@@ -788,6 +821,57 @@ export default (app: Probot) => {
     // which is useful for ensuring the item is in the correct state if other edits occurred or for offline recovery.
     console.log(`Calling handleProjectItemSync for edited item. Determined target column from edit event: ${determinedTargetColumn}`);
     await handleProjectItemSync(context, item, mapping, connection, determinedTargetColumn);
+  });
+
+  app.on("issue_comment.created", async (context) => {
+    console.log("💬 Issue comment created event received");
+
+    const comment = context.payload.comment;
+    const issue = context.payload.issue;
+
+    if (comment.user?.type === "Bot") {
+      console.log("Skipping bot comment to avoid sync loops");
+      return;
+    }
+
+    const config = await loadSyncConfig(context);
+    if (!config || !config.syncMappings || config.syncMappings.length === 0) {
+      console.log("No sync mappings configured for this repository");
+      return;
+    }
+
+    const repoOwner = context.payload.repository.owner.login;
+    const repoName = context.payload.repository.name;
+    const issueNumber = issue.number;
+
+    for (const mapping of config.syncMappings) {
+      if (!mapping.enabled) continue;
+
+      const connection = createAdoConnection(mapping);
+      const existingWorkItem = await findExistingWorkItem(
+        connection,
+        mapping,
+        repoOwner,
+        repoName,
+        issueNumber
+      );
+
+      if (!existingWorkItem?.id) continue;
+
+      console.log(
+        `Found ADO work item ${existingWorkItem.id} for ${repoOwner}/${repoName}#${issueNumber}. Syncing new comment.`
+      );
+
+      const ghComment = {
+        id: comment.id,
+        body: comment.body || "",
+        user: { login: comment.user?.login || "unknown" },
+        created_at: comment.created_at,
+        updated_at: comment.updated_at,
+      };
+
+      await syncCommentsToWorkItem(connection, mapping, existingWorkItem.id, [ghComment]);
+    }
   });
 };
 

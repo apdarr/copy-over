@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Comment Syncing**: GitHub issue comments are now synced to ADO work item discussions
+  - Attribution format: original comment followed by `— @username via copy-over`
+  - Real-time sync via `issue_comment.created` webhook
+  - Backfill of existing comments when work items are created or updated
+  - Duplicate prevention using hidden HTML markers (`<!-- gh-comment-id:XXX -->`)
+  - Bot comments are automatically skipped to prevent sync loops
+  - Comment logic extracted to dedicated `src/comments.ts` module
+
+### Fixed
+- **Duplicate work item creation**: When adding an item to a project column, GitHub fires both `created` and `edited` events simultaneously. Both handlers would race to create a work item, resulting in duplicates (one in "To Do", one in the correct column). Added per-item processing lock to serialize concurrent handlers on the same project item.
+
 - **IssueOps Configuration System**: Configure sync via GitHub issue forms
   - Issue template for configuration at `.github/ISSUE_TEMPLATE/configure-sync.yml`
   - Automatic parsing and storage of configuration

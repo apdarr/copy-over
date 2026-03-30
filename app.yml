@@ -6,6 +6,7 @@
 #
 # REQUIRED WEBHOOK SUBSCRIPTIONS:
 # - issues (for configuration via IssueOps)
+# - issue_comment (for syncing comments to Azure DevOps)
 # - projects_v2_item (for syncing project items to Azure DevOps)
 #
 # Read more about configuring your GitHub App:
@@ -18,6 +19,7 @@
 # Uncomment the event names below to enable them.
 default_events:
   - issues
+  - issue_comment
   - projects_v2_item
 
 # The set of permissions needed by the GitHub App. The format of the object uses
