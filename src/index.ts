@@ -319,7 +319,7 @@ async function fetchIssueMetadata(context: any, nodeId: string): Promise<GitHubI
 }
 
 // Helper function to search for existing work items by GitHub identifier
-async function findExistingWorkItem(connection: azdev.WebApi, mapping: SyncMapping, repoOwner: string, repoName: string, issueNumber: number): Promise<any | null> {
+export async function findExistingWorkItem(connection: azdev.WebApi, mapping: SyncMapping, repoOwner: string, repoName: string, issueNumber: number): Promise<any | null> {
   try {
     const workItemTrackingApi = await connection.getWorkItemTrackingApi();
     const project = mapping.azureDevOps.project;
@@ -349,6 +349,32 @@ async function findExistingWorkItem(connection: azdev.WebApi, mapping: SyncMappi
   } catch (error) {
     console.error("Error searching for existing work item:", error);
     return null;
+  }
+}
+
+export async function deleteWorkItemForIssue(
+  connection: azdev.WebApi,
+  mapping: SyncMapping,
+  repoOwner: string,
+  repoName: string,
+  issueNumber: number
+): Promise<boolean> {
+  const githubIdentifier = `${repoOwner}/${repoName}#${issueNumber}`;
+  const existingWorkItem = await findExistingWorkItem(connection, mapping, repoOwner, repoName, issueNumber);
+
+  if (!existingWorkItem?.id) {
+    console.log(`No ADO work item found for ${githubIdentifier}. Nothing to delete.`);
+    return false;
+  }
+
+  try {
+    const workItemTrackingApi = await connection.getWorkItemTrackingApi();
+    await workItemTrackingApi.deleteWorkItem(existingWorkItem.id, mapping.azureDevOps.project, true);
+    console.log(`Deleted ADO work item ${existingWorkItem.id} for ${githubIdentifier}`);
+    return true;
+  } catch (error) {
+    console.error(`Error deleting ADO work item ${existingWorkItem.id} for ${githubIdentifier}:`, error);
+    return false;
   }
 }
 
@@ -821,6 +847,47 @@ export default (app: Probot) => {
     // which is useful for ensuring the item is in the correct state if other edits occurred or for offline recovery.
     console.log(`Calling handleProjectItemSync for edited item. Determined target column from edit event: ${determinedTargetColumn}`);
     await handleProjectItemSync(context, item, mapping, connection, determinedTargetColumn);
+  });
+
+  app.on("projects_v2_item.deleted", async (context) => {
+    console.log("🗑️ Project item deleted event received");
+
+    const item = context.payload.projects_v2_item;
+
+    if (!item.content_node_id) {
+      console.log("Deleted item has no content_node_id (draft issue). Nothing to remove from ADO.");
+      return;
+    }
+
+    const config = await loadSyncConfig(context);
+    if (!config || !config.syncMappings || config.syncMappings.length === 0) {
+      console.log("No sync mappings configured for this repository");
+      return;
+    }
+
+    const mapping = findSyncMapping(config, item.project_node_id);
+    if (!mapping) {
+      console.log(`No sync mapping found for project node_id: ${item.project_node_id}`);
+      return;
+    }
+
+    if (!mapping.enabled) {
+      console.log(`Sync is disabled for project #${mapping.githubProject.number}`);
+      return;
+    }
+
+    const issueMetadata = await fetchIssueMetadata(context, item.content_node_id);
+    if (!issueMetadata) {
+      console.log("Could not fetch issue metadata for deleted item. Skipping ADO deletion.");
+      return;
+    }
+
+    const { login: repoOwner } = issueMetadata.repository.owner;
+    const { name: repoName } = issueMetadata.repository;
+    const issueNumber = issueMetadata.number;
+
+    const connection = createAdoConnection(mapping);
+    await deleteWorkItemForIssue(connection, mapping, repoOwner, repoName, issueNumber);
   });
 
   app.on("issue_comment.created", async (context) => {
