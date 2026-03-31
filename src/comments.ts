@@ -30,7 +30,8 @@ const COMMENT_MARKER_SUFFIX = " -->";
 
 export function formatCommentForAdo(body: string, authorLogin: string): string {
   const trimmedBody = body.trim();
-  return `${trimmedBody}\n\n— @${authorLogin} via copy-over`;
+  const htmlBody = trimmedBody.replace(/\n/g, "<br>");
+  return `${htmlBody}<br><br>— @${authorLogin} via copy-over`;
 }
 
 export function buildCommentMarker(githubCommentId: number): string {

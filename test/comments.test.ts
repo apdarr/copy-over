@@ -8,25 +8,25 @@ import {
 describe("formatCommentForAdo", () => {
   test("formats a simple comment with attribution", () => {
     const result = formatCommentForAdo("Let's plan this for Q4", "octocat");
-    expect(result).toBe("Let's plan this for Q4\n\n— @octocat via copy-over");
+    expect(result).toBe("Let's plan this for Q4<br><br>— @octocat via copy-over");
   });
 
   test("trims whitespace from comment body", () => {
     const result = formatCommentForAdo("  hello world  ", "user1");
-    expect(result).toBe("hello world\n\n— @user1 via copy-over");
+    expect(result).toBe("hello world<br><br>— @user1 via copy-over");
   });
 
   test("handles multiline comment bodies", () => {
     const body = "First line\n\nSecond paragraph\n- bullet point";
     const result = formatCommentForAdo(body, "devuser");
     expect(result).toBe(
-      "First line\n\nSecond paragraph\n- bullet point\n\n— @devuser via copy-over"
+      "First line<br><br>Second paragraph<br>- bullet point<br><br>— @devuser via copy-over"
     );
   });
 
   test("handles empty comment body", () => {
     const result = formatCommentForAdo("", "ghost");
-    expect(result).toBe("\n\n— @ghost via copy-over");
+    expect(result).toBe("<br><br>— @ghost via copy-over");
   });
 });
 
