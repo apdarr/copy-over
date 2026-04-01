@@ -28,10 +28,21 @@ interface GitHubComment {
 const COMMENT_MARKER_PREFIX = "<!-- gh-comment-id:";
 const COMMENT_MARKER_SUFFIX = " -->";
 
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function formatCommentForAdo(body: string, authorLogin: string): string {
   const trimmedBody = body.trim();
-  const htmlBody = trimmedBody.replace(/\n/g, "<br>");
-  return `${htmlBody}<br><br>— @${authorLogin} via copy-over`;
+  const escapedBody = escapeHtml(trimmedBody);
+  const htmlBody = escapedBody.replace(/\n/g, "<br>");
+  const escapedAuthorLogin = escapeHtml(authorLogin);
+  return `${htmlBody}<br><br>— @${escapedAuthorLogin} via copy-over`;
 }
 
 export function buildCommentMarker(githubCommentId: number): string {
