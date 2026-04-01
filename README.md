@@ -32,6 +32,9 @@ npm install
 
 # Run the bot
 npm start
+
+# Rebuild ADO board from GitHub Project state, then start listening for events
+npm run copy
 ```
 
 ## Docker
@@ -62,6 +65,8 @@ docker run -e APP_ID=<app-id> -e PRIVATE_KEY=<pem-value> copy-over
   - Existing comments are backfilled when a work item is created or updated.
   - Duplicate comments are prevented using hidden HTML markers.
   - Bot comments are skipped to avoid sync loops.
+- Removing an item from the GitHub Project deletes the corresponding ADO work item.
+- On-demand full reconciliation via `npm run copy`: fetches all items from the GitHub Project, diffs against existing ADO work items, and creates/updates/deletes as needed. After reconciliation, continues listening for webhook events normally.
 - There's a one-to-one mapping between a Project and an ADO board. Setting this up is done via IssueOps. 
   - Ideally in the same repo, where the GitHub app code lives, users can create new issues following the GitHub issue template in `.github/ISSUE_TEMPLATE/configure-sync.yml`.
   - There they can fill out the required information to set up the sync (GitHub Project ID, ADO organization, project, team, board names).
@@ -75,4 +80,4 @@ docker run -e APP_ID=<app-id> -e PRIVATE_KEY=<pem-value> copy-over
 
 - [x] Current `undefined` column mapping issue when moving an issue to a new column that doesn't exist in ADO. Creating new columns in this case on ADO should be possible?
 - [x] Important, all comment history needs to be copied over. Need to figure out how to attribute authorship for comments.
-- [ ] It should be possible to re-load the entire state of the Project to ADO board on-demand (e.g. via a special comment on an issue, or a separate "sync now" issue template). This would help with initial syncs or if something got out of sync.
+- [x] It should be possible to re-load the entire state of the Project to ADO board on-demand (e.g. via a special comment on an issue, or a separate "sync now" issue template). This would help with initial syncs or if something got out of sync.

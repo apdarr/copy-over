@@ -24,7 +24,7 @@ async function withItemLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 // Interface for a single sync mapping
-interface SyncMapping {
+export interface SyncMapping {
   githubProject: {
     number: number;
     id: number;
@@ -40,7 +40,7 @@ interface SyncMapping {
 }
 
 // Interface for the entire config file structure
-interface SyncConfig {
+export interface SyncConfig {
   syncMappings: SyncMapping[];
 }
 
@@ -56,34 +56,30 @@ interface GitHubIssueMetadata {
   labels?: { nodes: { name: string }[] };
 }
 
-const token: string = process.env.ADO_TOKEN || '';
-const CONFIG_REPO_OWNER: string = process.env.CONFIG_REPO_OWNER || '';
-const CONFIG_REPO_NAME: string = process.env.CONFIG_REPO_NAME || '';
-
 /**
  * Get the config repository owner and name
  * Validates that required env vars are set
  */
 function getConfigRepoPath(): { owner: string; repo: string } {
-  if (!CONFIG_REPO_OWNER || !CONFIG_REPO_NAME) {
+  const owner = process.env.CONFIG_REPO_OWNER || '';
+  const repo = process.env.CONFIG_REPO_NAME || '';
+  if (!owner || !repo) {
     throw new Error(
       'CONFIG_REPO_OWNER and CONFIG_REPO_NAME environment variables are required. ' +
       'Set these to specify where the sync configuration file is stored.'
     );
   }
-  return {
-    owner: CONFIG_REPO_OWNER,
-    repo: CONFIG_REPO_NAME
-  };
+  return { owner, repo };
 }
 
 /**
  * Load sync configuration from repository
  */
-async function loadSyncConfig(context: any): Promise<SyncConfig | undefined> {
+export async function loadSyncConfig(octokitOrContext: any): Promise<SyncConfig | undefined> {
   try {
     const { owner, repo } = getConfigRepoPath();
-    const { data } = await context.octokit.repos.getContent({
+    const octokit = octokitOrContext.octokit ?? octokitOrContext;
+    const { data } = await octokit.repos.getContent({
       owner,
       repo,
       path: '.github/copy-over-config.json'
@@ -214,9 +210,9 @@ function findSyncMapping(config: SyncConfig, projectNodeId: string): SyncMapping
 /**
  * Create Azure DevOps connection from mapping
  */
-function createAdoConnection(mapping: SyncMapping): azdev.WebApi {
+export function createAdoConnection(mapping: SyncMapping): azdev.WebApi {
   const orgUrl = `https://dev.azure.com/${mapping.azureDevOps.organization}`;
-  const authHandler = azdev.getPersonalAccessTokenHandler(token);
+  const authHandler = azdev.getPersonalAccessTokenHandler(process.env.ADO_TOKEN || '');
   return new azdev.WebApi(orgUrl, authHandler);
 }
 
@@ -475,7 +471,7 @@ async function handleProjectItemSync(context: any, item: any, mapping: SyncMappi
 /**
  * Create a new work item in Azure DevOps
  */
-async function createWorkItem(
+export async function createWorkItem(
   connection: azdev.WebApi,
   mapping: SyncMapping,
   title: string,
@@ -943,7 +939,7 @@ export default (app: Probot) => {
 };
 
 // Ensure specified labels exist as tags in the project and are applied to the work item
-async function ensureLabelsOnWorkItem(connection: azdev.WebApi, mapping: SyncMapping, workItemId: number | undefined, labels: string[]): Promise<void> {
+export async function ensureLabelsOnWorkItem(connection: azdev.WebApi, mapping: SyncMapping, workItemId: number | undefined, labels: string[]): Promise<void> {
   if (!workItemId) return;
   if (!labels || labels.length === 0) return;
 
@@ -1045,7 +1041,7 @@ async function addMissingColumnTag(connection: azdev.WebApi, mapping: SyncMappin
 }
 
 // Helper function to update work item column position
-async function updateWorkItemColumn(connection: azdev.WebApi, mapping: SyncMapping, workItemId: number | undefined, columnName: string | undefined): Promise<void> {
+export async function updateWorkItemColumn(connection: azdev.WebApi, mapping: SyncMapping, workItemId: number | undefined, columnName: string | undefined): Promise<void> {
   if (!workItemId) {
     console.error("Work item ID is undefined");
     return;

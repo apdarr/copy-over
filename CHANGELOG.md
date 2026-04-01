@@ -16,8 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bot comments are automatically skipped to prevent sync loops
   - Comment logic extracted to dedicated `src/comments.ts` module
 
+- **Deletion Sync**: Removing an item from the GitHub Project now deletes the corresponding ADO work item via `projects_v2_item.deleted` webhook handler.
+
+- **On-Demand Reconciliation** (`npm run rebuild`): Full diff-based sync between GitHub Project and ADO board.
+  - Fetches all items from GitHub Project via paginated GraphQL
+  - Fetches all synced ADO work items by `GitHub Import` tag
+  - Creates missing items, deletes orphaned items, updates column/labels for existing items
+  - After reconciliation, continues listening for webhook events normally
+  - Reconciliation logic in `src/rebuild.ts`, CLI entry point in `src/rebuild-cli.ts`
+
 ### Fixed
 - **Duplicate work item creation**: When adding an item to a project column, GitHub fires both `created` and `edited` events simultaneously. Both handlers would race to create a work item, resulting in duplicates (one in "To Do", one in the correct column). Added per-item processing lock to serialize concurrent handlers on the same project item.
+- **Comment formatting in ADO**: Comments now use HTML `<br>` tags instead of `\n` for line breaks, since ADO renders comments as HTML.
 
 - **IssueOps Configuration System**: Configure sync via GitHub issue forms
   - Issue template for configuration at `.github/ISSUE_TEMPLATE/configure-sync.yml`
