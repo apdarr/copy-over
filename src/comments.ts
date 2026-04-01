@@ -1,20 +1,5 @@
 import * as azdev from "azure-devops-node-api";
-
-interface SyncMapping {
-  githubProject: {
-    number: number;
-    id: number;
-    nodeId: string;
-  };
-  azureDevOps: {
-    organization: string;
-    project: string;
-    team: string;
-    board: string;
-  };
-  enabled: boolean;
-}
-
+import type { SyncMapping } from "./index";
 interface GitHubComment {
   id: number;
   body: string;
