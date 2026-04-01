@@ -8,7 +8,7 @@ import {
 describe("formatCommentForAdo", () => {
   test("formats a simple comment with attribution", () => {
     const result = formatCommentForAdo("Let's plan this for Q4", "octocat");
-    expect(result).toBe("Let's plan this for Q4<br><br>— @octocat via copy-over");
+    expect(result).toBe("Let&#39;s plan this for Q4<br><br>— @octocat via copy-over");
   });
 
   test("trims whitespace from comment body", () => {

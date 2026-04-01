@@ -1,5 +1,5 @@
 import * as azdev from "azure-devops-node-api";
-import type { SyncMapping } from "./index";
+import type { SyncMapping } from "./index.js";
 interface GitHubComment {
   id: number;
   body: string;
