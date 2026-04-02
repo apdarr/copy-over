@@ -12,8 +12,9 @@
     "probot-app"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --skipLibCheck",
     "start": "probot run ./lib/index.js",
+    "copy": "npm run build && node lib/rebuild-cli.js",
     "test": "vitest"
   },
   "dependencies": {

@@ -4,6 +4,11 @@
 # NOTE: changing this file will not update your GitHub App settings.
 # You must visit github.com/settings/apps/your-app-name to edit them.
 #
+# REQUIRED WEBHOOK SUBSCRIPTIONS:
+# - issues (for configuration via IssueOps)
+# - issue_comment (for syncing comments to Azure DevOps)
+# - projects_v2_item (for syncing project items to Azure DevOps)
+#
 # Read more about configuring your GitHub App:
 # https://probot.github.io/docs/development/#configuring-a-github-app
 #
@@ -13,39 +18,9 @@
 # The list of events the GitHub App subscribes to.
 # Uncomment the event names below to enable them.
 default_events:
-  # - check_run
-  # - check_suite
-  # - commit_comment
-  # - create
-  # - delete
-  # - deployment
-  # - deployment_status
-  # - fork
-  # - gollum
-  # - issue_comment
   - issues
-# - label
-# - milestone
-# - member
-# - membership
-# - org_block
-# - organization
-# - page_build
-# - project
-# - project_card
-# - project_column
-# - public
-# - pull_request
-# - pull_request_review
-# - pull_request_review_comment
-# - push
-# - release
-# - repository
-# - repository_import
-# - status
-# - team
-# - team_add
-# - watch
+  - issue_comment
+  - projects_v2_item
 
 # The set of permissions needed by the GitHub App. The format of the object uses
 # the permission name for the key (for example, issues) and the access type for
@@ -62,7 +37,7 @@ default_permissions:
 
   # Repository contents, commits, branches, downloads, releases, and merges.
   # https://developer.github.com/v3/apps/permissions/#permission-on-contents
-  # contents: read
+  contents: write
 
   # Deployments and deployment statuses.
   # https://developer.github.com/v3/apps/permissions/#permission-on-deployments
