@@ -494,7 +494,10 @@ export async function createWorkItem(
   tagsSet.add(githubIdentifier);
   for (const lbl of (labels || [])) {
     if (typeof lbl === 'string' && lbl.trim().length > 0) {
-      tagsSet.add(lbl.trim());
+      const sanitized = lbl.trim().replace(/;/g, "").replace(/\s+/g, " ").trim();
+      if (sanitized.length > 0) {
+        tagsSet.add(sanitized);
+      }
     }
   }
   if (targetColumn) {
