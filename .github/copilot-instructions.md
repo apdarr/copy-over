@@ -2,7 +2,7 @@
 
 This is a service that listens for changes GitHub Projects and syncs those to an Azure DevOps Board. It uses GitHub webhooks to receive real-time updates and the Azure DevOps REST API to make changes to the board.
 
-The service utlizes a few key libraries: 
+The service utilizes a few key libraries: 
 - Probot, for building GitHub Apps and handling webhooks
 - `azure-devops-node-api` NPM package for abstracting away REST API calls to AzDo
 - `@octokit/rest` NPM package for interacting with the GitHub REST API
