@@ -66,7 +66,7 @@ docker run -e APP_ID=<app-id> -e PRIVATE_KEY=<pem-value> copy-over
   - Duplicate comments are prevented using hidden HTML markers.
   - Bot comments are skipped to avoid sync loops.
 - Removing an item from the GitHub Project deletes the corresponding ADO work item.
-- On-demand full reconciliation via `npm run copy`: fetches all items from the GitHub Project, diffs against existing ADO work items, and creates/updates/deletes as needed. After reconciliation, continues listening for webhook events normally.
+- On-demand full reconciliation via `npm run copy`: fetches all items from the GitHub Project and rebuilds the mapped ADO board by deleting previously synced work items and recreating them to match the current Project state. After reconciliation, it continues listening for webhook events normally.
 - There's a one-to-one mapping between a Project and an ADO board. Setting this up is done via IssueOps. 
   - Ideally in the same repo, where the GitHub app code lives, users can create new issues following the GitHub issue template in `.github/ISSUE_TEMPLATE/configure-sync.yml`.
   - There they can fill out the required information to set up the sync (GitHub Project ID, ADO organization, project, team, board names).
